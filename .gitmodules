@@ -1,0 +1,3 @@
+[submodule "Journal"]
+	path = Journal
+	url = ./Journal
