@@ -8,6 +8,8 @@ import sys
 import urllib3
 from subprocess import call, run, check_output, PIPE, Popen
 
+from termcolor import colored
+
 
 # Magic to ensure all things work as expected
 basedir = os.path.dirname(os.path.realpath(sys.argv[0]))
@@ -21,14 +23,15 @@ def count_words():
     total_count = 0
     os.chdir('./Journal')
     for year in os.listdir():
-        os.chdir(year)
-        for month in os.listdir():
-            os.chdir(month)
-            for day in os.listdir():
-                data = check_output(['wc','-w',day])
-                total_count += int(data.decode("utf-8").strip().split(' ')[0])
+        if year != '.git':
+            os.chdir(year)
+            for month in os.listdir():
+                os.chdir(month)
+                for day in os.listdir():
+                    data = check_output(['wc','-w', day])
+                    total_count += int(data.decode("utf-8").strip().split(' ')[0])
+                os.chdir('..')
             os.chdir('..')
-        os.chdir('..')
     os.chdir('..')
 
     return "Total Count: " + str(total_count)
@@ -46,7 +49,6 @@ def get_todays_path():
             str(month).rjust(2,'0') + '/' +
             str(day).rjust(2,'0'))
     return filepath
-
 
 # Function to tell today's word-count.
 def todays_count_words():
@@ -86,12 +88,21 @@ def last_week_stats():
     for i in range(7):
         datafile.write(date_list[i].split('-')[2] + ' ' + str(counts[i]) + '\n')
     datafile.close()
-    # GNU Plot
-    gnuplot_commands = 'set terminal pngcairo font \'arial,10\' size 500,500; set boxwidth 0.75; set style fill solid; set term dumb; plot \'week.dat\' using 2:xtic(1) notitle with boxes'
 
-    command_to_call = 'gnuplot -e "' + gnuplot_commands + '"'
-    call(command_to_call, shell=True)
+    scaled_counts = scale(counts)
+    output = []
+    for i in range(7):
+        output.append(date_list[i] + "   " + str(counts[i]).rjust(4) + "  " + colored("█" * scaled_counts[i], color="green") + " ")
+
     os.remove(datafilename)
+    return '\n'.join(output)
+
+def scale(counts):
+    counts = counts.copy()
+    maxx = max(counts)
+    for index, count in enumerate(counts):
+        counts[index] = int(count * 100 / maxx)
+    return counts
 
 # Function to open a new file with today's date
 def write_now():
@@ -115,10 +126,12 @@ def save_entry():
     end = commit_msg_page.find('\n',start)
     commit_msg = commit_msg_page[start:end]
     # Commit and push
+    os.chdir('Journal')
     call(['git', 'add', '.'], stdout=FNULL)
     call(['git', 'commit', '-m', commit_msg], stdout=FNULL)
     call(['git', 'log'], stdout=FNULL)
     call(['git', 'push', 'origin', 'master'], stdout=FNULL)
+    os.chdir('..')
     return 'Committed Successfully'
 
 # Function to print log
@@ -128,15 +141,26 @@ def print_log():
 
     return output
 
-# check if the seconds argument is stats
-if len(sys.argv) > 1 and (sys.argv[1] == 'stats' or sys.argv[1] == 's'):
+def print_stats():
     print(todays_count_words())
     print(count_words())
-    last_week_stats()
-elif len(sys.argv) > 1 and (sys.argv[1] == 'commit' or sys.argv[1] == 'c'):
-    print(save_entry())
-elif len(sys.argv) > 1 and (sys.argv[1] == 'log' or sys.argv[1] == 'l'):
-    print(print_log())
-else:
-    print(write_now())
+    print(last_week_stats())
+    return ''
 
+def displayHelp():
+    return "You seem to have taken a wrong turn█"
+
+function_mappings = {
+        'stats': print_stats,
+        's': print_stats,
+        'commit': save_entry,
+        'c': save_entry,
+        'log': print_log,
+        'l': print_log
+        }
+
+if __name__ == '__main__':
+    try:
+        print(function_mappings.get(sys.argv[1], displayHelp)())
+    except Exception as e:
+        write_now()
